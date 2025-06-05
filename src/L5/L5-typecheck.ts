@@ -1,4 +1,4 @@
-// L5-typecheck
+
 // ========================================================
 import { equals, map, zipWith } from 'ramda';
 import { isAppExp, isBoolExp, isDefineExp, isIfExp, isLetrecExp, isLetExp, isNumExp,
@@ -10,7 +10,7 @@ import { isProcTExp, makeBoolTExp, makeNumTExp, makeProcTExp, makeStrTExp, makeV
          parseTE, unparseTExp,
          BoolTExp, NumTExp, StrTExp, TExp, VoidTExp } from "./TExp";
 import { isEmpty, allT, first, rest, NonEmptyList, List, isNonEmptyList } from '../shared/list';
-import { Result, makeFailure, bind, makeOk, zipWithResult } from '../shared/result';
+import { Result, makeFailure, bind, makeOk, zipWithResult, isOk } from '../shared/result';
 import { parse as p } from "../shared/parser";
 import { format } from '../shared/format';
 
@@ -142,7 +142,7 @@ export const typeofProc = (proc: ProcExp, tenv: TEnv): Result<TExp> => {
 //      ...
 //      type<randn>(tenv) = tn
 // then type<(rator rand1...randn)>(tenv) = t
-// We also check the correct number of arguments is passed.
+// We also check the correct number of arguments is passed. 
 export const typeofApp = (app: AppExp, tenv: TEnv): Result<TExp> =>
     bind(typeofExp(app.rator, tenv), (ratorTE: TExp) => {
         if (! isProcTExp(ratorTE)) {
@@ -170,8 +170,8 @@ export const typeofLet = (exp: LetExp, tenv: TEnv): Result<TExp> => {
     const vars = map((b) => b.var.var, exp.bindings);
     const vals = map((b) => b.val, exp.bindings);
     const varTEs = map((b) => b.var.texp, exp.bindings);
-    const constraints = zipWithResult((varTE, val) => bind(typeofExp(val, tenv), (typeOfVal: TExp) => 
-                                                            checkEqualType(varTE, typeOfVal, exp)),
+    const constraints = zipWithResult((varTE, val) => bind(typeofExp(val as Parsed, tenv), (typeOfVal) => 
+                                                            checkEqualType(varTE as TExp, typeOfVal as TExp, exp)),
                                       varTEs, vals);
     return bind(constraints, _ => typeofExps(exp.body, makeExtendTEnv(vars, varTEs, tenv)));
 };
@@ -199,9 +199,9 @@ export const typeofLetrec = (exp: LetrecExp, tenv: TEnv): Result<TExp> => {
     const tenvBody = makeExtendTEnv(ps, zipWith((tij, ti) => makeProcTExp(tij, ti), tijs, tis), tenv);
     const tenvIs = zipWith((params, tij) => makeExtendTEnv(map((p) => p.var, params), tij, tenvBody),
                            paramss, tijs);
-    const types = zipWithResult((bodyI, tenvI) => typeofExps(bodyI, tenvI), bodies, tenvIs)
+    const types = zipWithResult((bodyI, tenvI) => typeofExps(bodyI as List<Exp>, tenvI as TEnv), bodies, tenvIs)
     const constraints = bind(types, (types: TExp[]) => 
-                            zipWithResult((typeI, ti) => checkEqualType(typeI, ti, exp), types, tis));
+                            zipWithResult((typeI, ti) => checkEqualType(typeI, ti as TExp, exp), types, tis));
     return bind(constraints, _ => typeofExps(exp.body, tenvBody));
 };
 
@@ -214,8 +214,10 @@ export const typeofLetrec = (exp: LetrecExp, tenv: TEnv): Result<TExp> => {
 // TODO - write the true definition
 export const typeofDefine = (exp: DefineExp, tenv: TEnv): Result<VoidTExp> => {
     // return Error("TODO");
-    return makeOk(makeVoidTExp());
-};
+    return bind(typeofExp(exp.val, tenv), (valTE: TExp) =>
+        bind(checkEqualType(exp.var.texp, valTE, exp), _ =>
+            makeOk(makeVoidTExp())));
+}
 
 // Purpose: compute the type of a program
 // Typing rule:
