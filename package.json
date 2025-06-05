@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/LironTo/PPL-A3#readme",
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/node": "^22.15.29"
   },
   "dependencies": {
