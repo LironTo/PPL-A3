@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "ts-node hw3_tests.ts"
   },
   "repository": {
     "type": "git",
@@ -18,7 +18,12 @@
   "homepage": "https://github.com/LironTo/PPL-A3#readme",
   "devDependencies": {
     "@types/jest": "^29.5.14",
-    "@types/node": "^22.15.29"
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.15.29",
+    "@types/ramda": "^0.30.2",
+    "jest": "^29.7.0",
+    "mocha": "^11.5.0",
+    "ts-node": "^10.9.2"
   },
   "dependencies": {
     "ramda": "^0.30.1"

@@ -222,5 +222,41 @@ export const typeofDefine = (exp: DefineExp, tenv: TEnv): Result<VoidTExp> => {
 // Purpose: compute the type of a program
 // Typing rule:
 // TODO - write the true definition
-export const typeofProgram = (exp: Program, tenv: TEnv): Result<TExp> =>
-    makeFailure("TODO");
+export const typeofProgram = (prog: Program, tenv: TEnv): Result<TExp> => {
+    const exps = prog.exps;
+
+    const recur = (remaining: Exp[], env: TEnv): Result<TExp> => {
+        if (isEmpty(remaining)) {
+            return makeOk(makeVoidTExp());  // If nothing is left, default to void
+        }
+
+        const first = remaining[0];
+        const rest = remaining.slice(1);
+
+        if (isDefineExp(first)) {
+            // Check the type and update the env
+            return bind(typeofDefine(first, env), (_) =>
+                recur(rest, makeExtendTEnv([first.var.var], [first.var.texp], env))
+            );
+        } else {
+            // Just type it, but don't update the env
+            return bind(typeofExp(first, env), (_) =>
+                recur(rest, env)
+            );
+        }
+    };
+
+    return recur(exps, tenv);
+};
+
+
+export const L5typeofProgram = (concreteProgram: string): Result<string> =>
+    bind(p(concreteProgram), (sexp: Sexp) =>
+        bind(parseL5Exp(sexp), (exp: Exp) =>
+            isProgram(exp)
+                ? bind(typeofProgram(exp, makeEmptyTEnv()), unparseTExp)
+                : makeFailure("Not a program")
+        )
+    );
+
+

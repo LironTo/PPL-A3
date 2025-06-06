@@ -1,5 +1,11 @@
+// import * as assert from "assert";
+// import { L5programTypeof, L5typeof } from "./src/L5/L5-typecheck";
+// export { L5typeof, typeofProgram as L5programTypeof };
 import * as assert from "assert";
-import { L5programTypeof, L5typeof } from "./src/L5/L5-typecheck";
+import { L5typeof, L5programTypeof } from "./src/L5/L5-typecheck";
+
+
+
 
 // Helper function to unwrap the Result from L5typeof
 function getTypeofValue(exp: string): string | Error {
