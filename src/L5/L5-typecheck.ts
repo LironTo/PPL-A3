@@ -10,9 +10,10 @@ import { isProcTExp, makeBoolTExp, makeNumTExp, makeProcTExp, makeStrTExp, makeV
          parseTE, unparseTExp,
          BoolTExp, NumTExp, StrTExp, TExp, VoidTExp } from "./TExp";
 import { isEmpty, allT, first, rest, NonEmptyList, List, isNonEmptyList } from '../shared/list';
-import { Result, makeFailure, bind, makeOk, zipWithResult, isOk } from '../shared/result';
+import { Result, makeFailure, bind, makeOk, zipWithResult, isOk, mapResult } from '../shared/result';
 import { parse as p } from "../shared/parser";
 import { format } from '../shared/format';
+import { Sexp } from 's-expression'; 
 
 // Purpose: Check that type expressions are equivalent
 // as part of a fully-annotated type check process of exp.
@@ -227,22 +228,28 @@ export const typeofProgram = (prog: Program, tenv: TEnv): Result<TExp> => {
 
     const recur = (remaining: Exp[], env: TEnv): Result<TExp> => {
         if (isEmpty(remaining)) {
-            return makeOk(makeVoidTExp());  // If nothing is left, default to void
+            return makeFailure("Empty program");  // Program must have at least 1 expression
         }
 
         const first = remaining[0];
         const rest = remaining.slice(1);
 
-        if (isDefineExp(first)) {
-            // Check the type and update the env
-            return bind(typeofDefine(first, env), (_) =>
-                recur(rest, makeExtendTEnv([first.var.var], [first.var.texp], env))
-            );
+        if (isEmpty(rest)) {
+            // Last expression → return its type
+            return isDefineExp(first)
+                ? bind(typeofDefine(first, env), (_) => makeOk(makeVoidTExp()))
+                : typeofExp(first, env);
         } else {
-            // Just type it, but don't update the env
-            return bind(typeofExp(first, env), (_) =>
-                recur(rest, env)
-            );
+            // More expressions to process
+            if (isDefineExp(first)) {
+                return bind(typeofDefine(first, env), (_) =>
+                    recur(rest, makeExtendTEnv([first.var.var], [first.var.texp], env))
+                );
+            } else {
+                return bind(typeofExp(first, env), (_) =>
+                    recur(rest, env)
+                );
+            }
         }
     };
 
@@ -250,13 +257,19 @@ export const typeofProgram = (prog: Program, tenv: TEnv): Result<TExp> => {
 };
 
 
-export const L5typeofProgram = (concreteProgram: string): Result<string> =>
+
+export const L5programTypeof = (concreteProgram: string): Result<string> =>
     bind(p(concreteProgram), (sexp: Sexp) =>
-        bind(parseL5Exp(sexp), (exp: Exp) =>
-            isProgram(exp)
-                ? bind(typeofProgram(exp, makeEmptyTEnv()), unparseTExp)
-                : makeFailure("Not a program")
-        )
+        // If top-level is (L5 ...) → special handling
+        isNonEmptyList(sexp) && first(sexp) === "L5"
+            ? bind(mapResult(parseL5Exp, rest(sexp) as List<Sexp>), (exps: Exp[]) =>
+                bind(typeofProgram({ tag: "Program", exps }, makeEmptyTEnv()), unparseTExp))
+            : bind(parseL5Exp(sexp), (exp: Exp) =>
+                isProgram(exp)
+                    ? bind(typeofProgram(exp, makeEmptyTEnv()), unparseTExp)
+                    : makeFailure("Not a program"))
     );
+
+
 
 
