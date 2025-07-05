@@ -13,7 +13,7 @@ function getTypeofValue(exp: string): string | Error {
 }
 
 function getTypeofProgram(exp: string): string | Error {
-    const result = L5programTypeof(exp);
+    const result = L5typeof(exp);
     if (result.tag === 'Ok') {
         return result.value;
     } else {

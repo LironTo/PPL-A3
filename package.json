@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "mocha --require ts-node/register hw3_tests.ts"
+    "test": "mocha --require ts-node/register hw3_tests.ts",
+    "testEyal" : "mocha --require ts-node/register ./Eyal/hw3_tests.ts",
+    "testLiron" : "mocha --require ts-node/register ./Liron/hw3.test.ts"
   },
   "repository": {
     "type": "git",

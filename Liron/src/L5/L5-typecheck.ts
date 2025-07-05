@@ -222,3 +222,6 @@ export const typeofDefine = (exp: DefineExp, tenv: TEnv): Result<VoidTExp> => {
 // TODO - write the true definition
 export const typeofProgram = (exp: Program, tenv: TEnv): Result<TExp> =>
     makeFailure("TODO");
+
+export const L5programTypeof = (exp: Program, tenv: TEnv): Result<TExp> =>
+    makeFailure("TODO");
