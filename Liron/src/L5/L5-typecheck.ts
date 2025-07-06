@@ -4,11 +4,12 @@ import { equals, map, zipWith } from 'ramda';
 import { isAppExp, isBoolExp, isDefineExp, isIfExp, isLetrecExp, isLetExp, isNumExp,
          isPrimOp, isProcExp, isProgram, isStrExp, isVarRef, parseL5Exp, parseL5Program, unparse,
          AppExp, BoolExp, DefineExp, Exp, IfExp, LetrecExp, LetExp, NumExp,
-         Parsed, PrimOp, ProcExp, Program, StrExp } from "./L5-ast";
+         Parsed, PrimOp, ProcExp, Program, StrExp, isLitExp, LitExp } from "./L5-ast";
+import { isCompoundSExp, isEmptySExp, isSymbolSExp, valueToString } from './L5-value';
 import { applyTEnv, makeEmptyTEnv, makeExtendTEnv, TEnv } from "./TEnv";
 import { isProcTExp, isPairTExp, makeBoolTExp, makeNumTExp, makeProcTExp, makeStrTExp, makeVoidTExp,
-    parseTE, unparseTExp, isTVar, isAtomicTExp,
-    BoolTExp, NumTExp, StrTExp, TExp, VoidTExp, PairTExp, makePairTExp } from "./TExp";
+    parseTE, unparseTExp, isTVar, isAtomicTExp, makeLiteralTExp,
+    BoolTExp, NumTExp, StrTExp, TExp, VoidTExp, PairTExp, makePairTExp, LiteralTExp } from "./TExp";
 import { isEmpty, allT, first, rest, NonEmptyList, List, isNonEmptyList, cons } from '../shared/list';
 import { Result, makeFailure, bind, makeOk, zipWithResult, isOk } from '../shared/result';
 import { parse as p } from "../shared/parser";
@@ -52,7 +53,8 @@ export const typeofExp = (exp: Parsed, tenv: TEnv): Result<TExp> =>
     isLetrecExp(exp) ? typeofLetrec(exp, tenv) :
     isDefineExp(exp) ? typeofDefine(exp, tenv) :
     isProgram(exp) ? typeofProgram(exp) :
-    // TODO: isSetExp(exp) isLitExp(exp)
+    isLitExp(exp) ? typeofLit(exp) :
+    // TODO: isSetExp(exp)
     makeFailure(`Unknown type: ${format(exp)}`);
 
 // Purpose: Compute the type of a sequence of expressions
@@ -73,6 +75,35 @@ export const typeofBool = (b: BoolExp): BoolTExp => makeBoolTExp();
 
 // a string literal has type str-te
 const typeofStr = (s: StrExp): StrTExp => makeStrTExp();
+
+// Purpose: compute the type of a literal expression
+// All quoted expressions are treated as literal type, except for compound sexps (pairs)
+const typeofLit = (exp: LitExp): Result<TExp> => {
+    const val = exp.val;
+    return isCompoundSExp(val) ? typeofCompoundSExp(val) :
+           makeOk(makeLiteralTExp());  // Everything in quotes is literal
+};
+
+// Purpose: compute the type of a compound S-expression (for pairs)
+const typeofCompoundSExp = (val: any): Result<TExp> => {
+    if (isCompoundSExp(val)) {
+        // For pairs like (4 . 7), determine types recursively
+        const leftType = typeof val.val1 === 'number' ? makeNumTExp() :
+                        typeof val.val1 === 'boolean' ? makeBoolTExp() :
+                        typeof val.val1 === 'string' ? makeStrTExp() :
+                        isSymbolSExp(val.val1) ? makeLiteralTExp() :
+                        makeLiteralTExp();
+        
+        const rightType = typeof val.val2 === 'number' ? makeNumTExp() :
+                         typeof val.val2 === 'boolean' ? makeBoolTExp() :
+                         typeof val.val2 === 'string' ? makeStrTExp() :
+                         isSymbolSExp(val.val2) ? makeLiteralTExp() :
+                         makeLiteralTExp();
+        
+        return makeOk(makePairTExp(leftType, rightType));
+    }
+    return makeOk(makeLiteralTExp());
+};
 
 // primitive ops have known proc-te types
 const numOpTExp = parseTE('(number * number -> number)');

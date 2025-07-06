@@ -44,9 +44,9 @@ import { typeofExp } from "./L5-typecheck";
 export type TExp =  AtomicTExp | CompoundTExp | TVar;
 export const isTExp = (x: any): x is TExp => isAtomicTExp(x) || isCompoundTExp(x) || isTVar(x);
 
-export type AtomicTExp = NumTExp | BoolTExp | StrTExp | VoidTExp;
+export type AtomicTExp = NumTExp | BoolTExp | StrTExp | VoidTExp | LiteralTExp;
 export const isAtomicTExp = (x: any): x is AtomicTExp =>
-    isNumTExp(x) || isBoolTExp(x) || isStrTExp(x) || isVoidTExp(x);
+    isNumTExp(x) || isBoolTExp(x) || isStrTExp(x) || isVoidTExp(x) || isLiteralTExp(x);
 
 export type CompoundTExp = ProcTExp | TupleTExp | PairTExp;
 export const isCompoundTExp = (x: any): x is CompoundTExp => isProcTExp(x) || isTupleTExp(x) || isPairTExp(x);
@@ -76,6 +76,10 @@ export const isStrTExp = (x: any): x is StrTExp => x.tag === "StrTExp";
 export type VoidTExp = { tag: "VoidTExp" };
 export const makeVoidTExp = (): VoidTExp => ({tag: "VoidTExp"});
 export const isVoidTExp = (x: any): x is VoidTExp => x.tag === "VoidTExp";
+
+export type LiteralTExp = { tag: "LiteralTExp" };
+export const makeLiteralTExp = (): LiteralTExp => ({tag: "LiteralTExp"});
+export const isLiteralTExp = (x: any): x is LiteralTExp => x.tag === "LiteralTExp";
 
 // proc-te(param-tes: list(te), return-te: te)
 export type ProcTExp = { tag: "ProcTExp"; paramTEs: TExp[]; returnTE: TExp; };
@@ -220,6 +224,7 @@ export const unparseTExp = (te: TExp): Result<string> => {
         isBoolTExp(x) ? makeOk('boolean') :
         isStrTExp(x) ? makeOk('string') :
         isVoidTExp(x) ? makeOk('void') :
+        isLiteralTExp(x) ? makeOk('literal') :
         isEmptyTVar(x) ? makeOk(x.var) :
         isTVar(x) ? up(tvarContents(x)) :
         isProcTExp(x) ? bind(unparseTuple(x.paramTEs), (paramTEs: string[]) =>
