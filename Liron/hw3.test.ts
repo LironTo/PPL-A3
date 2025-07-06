@@ -13,7 +13,7 @@ function getTypeofValue(exp: string): string | Error {
 }
 
 function getTypeofProgram(exp: string): string | Error {
-    const result = L5typeof(exp);
+    const result = L5programTypeof(exp);
     if (result.tag === 'Ok') {
         return result.value;
     } else {
@@ -109,7 +109,7 @@ describe("L5 Type Checker", () => {
         it("should correctly type a pair of number and boolean", () => {
             assert.deepEqual(getTypeofValue("(define (p : (Pair number boolean)) (cons 5 #t))"), "void");
         });
-
+        
         it("should correctly type car of a pair", () => {
             assert.deepEqual(getTypeofProgram("(L5 (define (p : (Pair number boolean)) (cons 5 #t)) (car p))"), "number");
         });

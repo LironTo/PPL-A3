@@ -2,15 +2,15 @@
 // ========================================================
 import { equals, map, zipWith } from 'ramda';
 import { isAppExp, isBoolExp, isDefineExp, isIfExp, isLetrecExp, isLetExp, isNumExp,
-         isPrimOp, isProcExp, isProgram, isStrExp, isVarRef, parseL5Exp, unparse,
+         isPrimOp, isProcExp, isProgram, isStrExp, isVarRef, parseL5Exp, parseL5Program, unparse,
          AppExp, BoolExp, DefineExp, Exp, IfExp, LetrecExp, LetExp, NumExp,
          Parsed, PrimOp, ProcExp, Program, StrExp } from "./L5-ast";
 import { applyTEnv, makeEmptyTEnv, makeExtendTEnv, TEnv } from "./TEnv";
-import { isProcTExp, makeBoolTExp, makeNumTExp, makeProcTExp, makeStrTExp, makeVoidTExp,
-         parseTE, unparseTExp,
-         BoolTExp, NumTExp, StrTExp, TExp, VoidTExp } from "./TExp";
-import { isEmpty, allT, first, rest, NonEmptyList, List, isNonEmptyList } from '../shared/list';
-import { Result, makeFailure, bind, makeOk, zipWithResult } from '../shared/result';
+import { isProcTExp, isPairTExp, makeBoolTExp, makeNumTExp, makeProcTExp, makeStrTExp, makeVoidTExp,
+    parseTE, unparseTExp, isTVar, isAtomicTExp,
+    BoolTExp, NumTExp, StrTExp, TExp, VoidTExp, PairTExp, makePairTExp } from "./TExp";
+import { isEmpty, allT, first, rest, NonEmptyList, List, isNonEmptyList, cons } from '../shared/list';
+import { Result, makeFailure, bind, makeOk, zipWithResult, isOk } from '../shared/result';
 import { parse as p } from "../shared/parser";
 import { format } from '../shared/format';
 
@@ -51,7 +51,7 @@ export const typeofExp = (exp: Parsed, tenv: TEnv): Result<TExp> =>
     isLetExp(exp) ? typeofLet(exp, tenv) :
     isLetrecExp(exp) ? typeofLetrec(exp, tenv) :
     isDefineExp(exp) ? typeofDefine(exp, tenv) :
-    isProgram(exp) ? typeofProgram(exp, tenv) :
+    isProgram(exp) ? typeofProgram(exp) :
     // TODO: isSetExp(exp) isLitExp(exp)
     makeFailure(`Unknown type: ${format(exp)}`);
 
@@ -79,7 +79,7 @@ const numOpTExp = parseTE('(number * number -> number)');
 const numCompTExp = parseTE('(number * number -> boolean)');
 const boolOpTExp = parseTE('(boolean * boolean -> boolean)');
 
-// Todo: cons, car, cdr, list
+
 export const typeofPrim = (p: PrimOp): Result<TExp> =>
     (p.op === '+') ? numOpTExp :
     (p.op === '-') ? numOpTExp :
@@ -102,6 +102,10 @@ export const typeofPrim = (p: PrimOp): Result<TExp> =>
     (p.op === 'string=?') ? parseTE('(T1 * T2 -> boolean)') :
     (p.op === 'display') ? parseTE('(T -> void)') :
     (p.op === 'newline') ? parseTE('(Empty -> void)') :
+    // Pair ops
+    (p.op === 'cons') ? parseTE('(T1 * T2 -> (Pair T1 T2))') :
+    (p.op === 'car') ? parseTE('((Pair T1 T2) -> T1)') :
+    (p.op === 'cdr') ? parseTE('((Pair T1 T2) -> T2)') :
     makeFailure(`Primitive not yet implemented: ${p.op}`);
 
 // Purpose: compute the type of an if-exp
@@ -153,10 +157,25 @@ export const typeofApp = (app: AppExp, tenv: TEnv): Result<TExp> =>
         if (app.rands.length !== ratorTE.paramTEs.length) {
             return bind(unparse(app), (exp: string) => makeFailure<TExp>(`Wrong parameter numbers passed to proc: ${exp}`));
         }
-        const constraints = zipWithResult((rand, trand) => bind(typeofExp(rand, tenv), (typeOfRand: TExp) => 
-                                                                checkEqualType(typeOfRand, trand, app)),
-                                          app.rands, ratorTE.paramTEs);
-        return bind(constraints, _ => makeOk(ratorTE.returnTE));
+        
+        // Type unification במקום checkEqualType
+        const substitution = new Map<string, TExp>();
+        
+        for (let i = 0; i < app.rands.length; i++) {
+            const randTEResult = typeofExp(app.rands[i], tenv);
+            if (!isOk(randTEResult)) return randTEResult;
+            
+            const paramTE = ratorTE.paramTEs[i];
+            const randTE = randTEResult.value;
+            
+            if (!unifyTypes(paramTE, randTE, substitution)) {
+                return bind(unparse(app), (exp: string) => 
+                    makeFailure<TExp>(`Type mismatch in application: ${exp}`));
+            }
+        }
+        
+        // החלף Type Variables בטיפוס המוחזר
+        return makeOk(substituteTypeVars(ratorTE.returnTE, substitution));
     });
 
 // Purpose: compute the type of a let-exp
@@ -213,15 +232,75 @@ export const typeofLetrec = (exp: LetrecExp, tenv: TEnv): Result<TExp> => {
 //   (define (var : texp) val)
 // TODO - write the true definition
 export const typeofDefine = (exp: DefineExp, tenv: TEnv): Result<VoidTExp> => {
-    // return Error("TODO");
-    return makeOk(makeVoidTExp());
+    const valTE = typeofExp(exp.val, tenv)
+    const constraint = bind(valTE, (valType: TExp) => checkEqualType(valType, exp.var.texp, exp));
+    return isOk(constraint) ? makeOk(makeVoidTExp()) : makeFailure("VarDecl type different from val type, types:" +
+                                                 (isOk(valTE) ? unparseTExp(valTE.value) : "unknown") + " and " + unparseTExp(exp.var.texp));
 };
 
 // Purpose: compute the type of a program
 // Typing rule:
 // TODO - write the true definition
-export const typeofProgram = (exp: Program, tenv: TEnv): Result<TExp> =>
-    makeFailure("TODO");
+export const typeofProgram = (exp: Program): Result<TExp> =>{
+    const exps = exp.exps;
 
-export const L5programTypeof = (exp: Program, tenv: TEnv): Result<TExp> =>
-    makeFailure("TODO");
+    const recur = (remaining: Exp[], env: TEnv): Result<TExp> => 
+        (isEmpty(remaining)) ? makeOk(makeVoidTExp()) :
+        (remaining.length === 1) ? typeofExp(remaining[0], env) :
+        (isDefineExp(remaining[0])) ? bind(typeofDefine(remaining[0], env), (_) => recur(remaining.slice(1), makeExtendTEnv([(remaining[0] as DefineExp).var.var], [(remaining[0] as DefineExp).var.texp], env))) :
+        bind(typeofExp(remaining[0], env), (_) => recur(remaining.slice(1), env));
+    
+    return recur(exps, makeEmptyTEnv());
+};
+
+export const L5programTypeof = (exp: string): Result<string> =>
+    (exp.length >= 5) && (exp.substring(0, 4) === "(L5 ") && (exp.substring(exp.length - 1) === ")") ?
+        bind(p(exp), (x) =>
+            bind(parseL5Program(x), (prog: Program) =>
+                bind(typeofProgram(prog), unparseTExp))) :
+        makeFailure(`Invalid L5 program: ${exp}`);
+
+// Type unification functions
+const unifyTypes = (expected: TExp, actual: TExp, substitution: Map<string, TExp>): boolean => {
+    if (isTVar(expected)) {
+        const existing = substitution.get(expected.var);
+        if (existing) {
+            return equals(existing, actual);
+        }
+        substitution.set(expected.var, actual);
+        return true;
+    }
+    
+    if (isAtomicTExp(expected) && isAtomicTExp(actual)) {
+        return equals(expected, actual);
+    }
+    
+    if (isPairTExp(expected) && isPairTExp(actual)) {
+        return unifyTypes(expected.first, actual.first, substitution) &&
+               unifyTypes(expected.second, actual.second, substitution);
+    }
+    
+    return equals(expected, actual);
+};
+
+const substituteTypeVars = (type: TExp, substitution: Map<string, TExp>): TExp => {
+    if (isTVar(type)) {
+        return substitution.get(type.var) || type;
+    }
+    
+    if (isPairTExp(type)) {
+        return makePairTExp(
+            substituteTypeVars(type.first, substitution),
+            substituteTypeVars(type.second, substitution)
+        );
+    }
+    
+    if (isProcTExp(type)) {
+        return makeProcTExp(
+            type.paramTEs.map(p => substituteTypeVars(p, substitution)),
+            substituteTypeVars(type.returnTE, substitution)
+        );
+    }
+    
+    return type;
+};
